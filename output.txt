@@ -1,3 +1,204 @@
+"""
+from __future__ import annotations
+
+import os
+
+from dotenv import load_dotenv
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+from app.db.init import database, init_models
+from app.route import auth, test
+
+load_dotenv()
+
+FRONTEND_ORIGIN = os.getenv("FRONTEND_ORIGIN", "http://127.0.0.1:5500")
+
+print("FRONTEND_ORIGIN:", FRONTEND_ORIGIN)
+
+app = FastAPI(title="FastAPI Cookie JWT Auth")
+
+
+@app.on_event("startup")
+async def startup() -> None:
+    print("Connecting to database and creating models...")
+    init_models()
+    await database.connect()
+
+
+@app.on_event("shutdown")
+async def shutdown() -> None:
+    print("Disconnecting from database...")
+    await database.disconnect()
+
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[FRONTEND_ORIGIN],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.include_router(auth.router, prefix="/auth", tags=["auth"])
+app.include_router(test.router, prefix="/test", tags=["test"])
+
+
+@app.get("/")
+async def root():
+    return {"Welcome": "FastAPI server (JWT in HttpOnly cookies)"}
+
+""" app\main.py
+
+"""
+
+""" app\__init__.py
+
+"""
+import os
+
+from dotenv import load_dotenv
+from sqlalchemy import create_engine, MetaData
+from sqlalchemy.orm import declarative_base, sessionmaker
+from databases import Database
+
+load_dotenv()
+
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./app.db")
+
+metadata = MetaData()
+Base = declarative_base(metadata=metadata)
+
+engine = create_engine(DATABASE_URL, future=True)
+database = Database(DATABASE_URL)
+
+SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
+
+
+def init_models() -> None:
+    from app.db import model  # noqa: F401
+    Base.metadata.create_all(bind=engine)
+
+""" app\db\init.py
+
+"""
+from datetime import datetime
+
+from sqlalchemy import Boolean, Column, ForeignKey, Integer, String, Text, TIMESTAMP
+
+from app.db.init import Base
+
+
+class Auth(Base):
+    __tablename__ = "auth"
+
+    uid = Column(Integer, primary_key=True, autoincrement=True)
+    username = Column(String(255), nullable=False)
+    email = Column(String(255), nullable=False, unique=True)
+    password = Column(String(255), nullable=False)
+    is_active = Column(Boolean, default=True)
+    create_time = Column(TIMESTAMP, default=datetime.utcnow)
+    update_time = Column(TIMESTAMP, default=datetime.utcnow)
+
+
+class Token(Base):
+    __tablename__ = "token"
+
+    token_id = Column(Integer, primary_key=True, autoincrement=True)
+    uid = Column(Integer, ForeignKey("auth.uid"), nullable=False)
+    access_token = Column(Text, nullable=False)
+    refresh_token = Column(Text, nullable=False)
+    created_at = Column(TIMESTAMP, default=datetime.utcnow)
+    expires_at = Column(TIMESTAMP, nullable=False)
+
+""" app\db\model.py
+
+"""
+
+""" app\db\__init__.py
+
+"""
+from __future__ import annotations
+
+import os
+from datetime import datetime, timedelta
+from typing import Any, Dict
+
+from dotenv import load_dotenv
+from fastapi import HTTPException, status
+from jose import ExpiredSignatureError, JWTError, jwt
+from passlib.context import CryptContext
+
+load_dotenv()
+
+JWT_KEY = os.getenv("JWT_KEY", "dev_secret_key_change_me_123456!")
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 60
+REFRESH_TOKEN_EXPIRE_DAYS = 7
+
+pwd_context = CryptContext(schemes=["argon2"], deprecated="auto")
+
+
+def hash_password(password: str) -> str:
+    return pwd_context.hash(password)
+
+
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    return pwd_context.verify(plain_password, hashed_password)
+
+
+def _create_token(data: Dict[str, Any], expires_delta: timedelta) -> str:
+    to_encode = data.copy()
+    expire = datetime.utcnow() + expires_delta
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, JWT_KEY, algorithm=ALGORITHM)
+    return encoded_jwt
+
+
+def create_access_token(sub: int) -> str:
+    return _create_token(
+        data={"sub": str(sub), "type": "access"},
+        expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES),
+    )
+
+
+def create_refresh_token(sub: int) -> str:
+    return _create_token(
+        data={"sub": str(sub), "type": "refresh"},
+        expires_delta=timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS),
+    )
+
+
+def decode_token(token: str, expected_type: str) -> int:
+    try:
+        payload = jwt.decode(token, JWT_KEY, algorithms=[ALGORITHM])
+        token_type = payload.get("type")
+        uid = payload.get("sub")
+
+        if token_type != expected_type or uid is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token",
+            )
+        return int(uid)
+    except ExpiredSignatureError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token has expired",
+        )
+    except JWTError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token",
+        )
+
+""" app\lib\security.py
+
+"""
+
+""" app\lib\__init__.py
+
+"""
 from __future__ import annotations
 
 from datetime import datetime, timedelta
@@ -64,6 +265,8 @@ async def signup(data: dict = Body(...)):
     email: Optional[str] = data.get("email")
     username: Optional[str] = data.get("username")
     password: Optional[str] = data.get("password")
+    print(email)
+    return 
     if not email or not username or not password:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -182,3 +385,23 @@ async def me(uid: int = Depends(get_current_uid)):
         "username": user["username"],
         "is_active": user["is_active"],
     }
+
+""" app\route\auth.py
+
+"""
+from __future__ import annotations
+
+from fastapi import APIRouter
+
+router = APIRouter()
+
+
+@router.get("/")
+async def test_root():
+    return {"message": "The routing is working well."}
+
+""" app\route\test.py
+
+"""
+
+""" app\route\__init__.py
