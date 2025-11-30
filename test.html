@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>JWT Cookie Test</title>
+</head>
+<body>
+  <h1>JWT Cookie Test</h1>
+  <p>Backend: <code>http://127.0.0.1:8000</code></p>
+
+  <p>
+    <strong>Email:</strong>
+    <input id="email" size="30" value="" />
+  </p>
+  <p>
+    <strong>Username (for signup only):</strong>
+    <input id="username" size="20" value="jack" />
+  </p>
+  <p>
+    <strong>Password:</strong>
+    <input id="password" type="password" value="password123" />
+  </p>
+
+  <button onclick="signup()">Sign Up</button>
+  <button onclick="signin()">Sign In</button>
+  <button onclick="me()">Get Me</button>
+  <button onclick="signout()">Sign Out</button>
+
+  <pre id="log" style="margin-top:20px; background:#111; color:#0f0; padding:10px; min-height:120px;"></pre>
+
+  <script>
+    const API = "http://127.0.0.1:8000";
+
+    function log(msg) {
+      const el = document.getElementById("log");
+      el.textContent = typeof msg === "string" ? msg : JSON.stringify(msg, null, 2);
+    }
+
+    function getFields() {
+      return {
+        email: document.getElementById("email").value,
+        username: document.getElementById("username").value,
+        password: document.getElementById("password").value,
+      };
+    }
+
+    async function signup() {
+      const { email, username, password } = getFields();
+      try {
+        const res = await fetch(API + "/auth/signup", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ email, username, password }),
+        });
+        const data = await res.json();
+        log(data);
+      } catch (err) {
+        log("Signup error: " + err);
+      }
+    }
+
+    async function signin() {
+      const { email, password } = getFields();
+      try {
+        const res = await fetch(API + "/auth/signin", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ email, password }),
+        });
+        const data = await res.json();
+        log(data);
+      } catch (err) {
+        log("Signin error: " + err);
+      }
+    }
+
+    async function me() {
+      try {
+        const res = await fetch(API + "/auth/me", {
+          method: "GET",
+          credentials: "include",
+        });
+        const data = await res.json();
+        log(data);
+      } catch (err) {
+        log("Me error: " + err);
+      }
+    }
+
+    async function signout() {
+      try {
+        const res = await fetch(API + "/auth/signout", {
+          method: "POST",
+          credentials: "include",
+        });
+        const data = await res.json();
+        log(data);
+      } catch (err) {
+        log("Signout error: " + err);
+      }
+    }
+  </script>
+</body>
+</html>

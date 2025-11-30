@@ -1,0 +1,24 @@
+# Ignore service account key file
+serviceAccountKey.json
+
+# Ignore environment variables file
+.env
+
+# Ignore Python virtual environment
+venv/
+.venv/
+
+# Ignore Python cache files
+__pycache__/
+*.pyc
+
+# Image files
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.bmp
+*.ico
+*.svg
+
+# gitignore file
